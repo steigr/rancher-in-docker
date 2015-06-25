@@ -1,0 +1,15 @@
+FROM alpine
+MAINTAINER Mathias Kaufmann <me@stei.gr>
+
+EXPOSE 2375
+EXPOSE 2376
+
+RUN apk add --update bash docker jq \
+ && rm -rf /var/lib/docker /var/cache/apk/*
+VOLUME ["/var/lib/docker"]
+
+ADD https://get.docker.com/builds/Linux/x86_64/docker-@@DOCKER_VERSION@@ /usr/bin/docker
+RUN chmod +x /usr/bin/docker
+ENTRYPOINT ["compute"]
+
+ADD files /

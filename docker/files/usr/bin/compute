@@ -1,0 +1,91 @@
+#!/bin/bash
+
+entrypoint() {
+  test -d /var/lib/docker || exit 1
+  export DOCKER_DAEMON_ARGS="$DOCKER_DAEMON_ARGS --icc=true --bip=10.$(ip route get 8.8.8.8 | awk '{print $7}' | awk -F. '{print $1 "." $2}').1/24"
+  echo "/usr/bin/docker -d $DOCKER_DAEMON_ARGS"
+  /usr/bin/wrapdocker 2>&1 > /dev/null
+
+  if test "x${RANCHER_SERVER}x${RANCER_SECRET}" != "xx"; then
+    RANCHER_URL=${RANCHER_SERVER}/v1/scripts/${RANCHER_SECRET}
+  fi
+
+  if test "x${RANCHER_URL}" != "x"; then
+    CATTLE_AGENT_IP=$(ip -4 -o route get 8.8.8.8 | awk '{print $7}')
+    echo "Registering with ${RANCHER_URL} as ${CATTLE_AGENT_IP}"
+    if ! /usr/bin/docker inspect rancher-agent >/dev/null; then
+      /usr/bin/docker rm rancher-agent-state || true
+    fi
+    if test -S /var/run/host-docker.sock; then
+       docker -H unix:///var/run/host-docker.sock save rancher/agent | docker load
+       docker -H unix:///var/run/host-docker.sock save rancher/agent-instance | docker load
+    fi
+    /usr/bin/docker run --privileged -e CATTLE_AGENT_IP=$CATTLE_AGENT_IP -e RANCHER_URL=$RANCHER_URL -v /var/run/docker.sock:/var/run/docker.sock rancher/agent:v0.7.9 register
+    /usr/bin/docker logs -f rancher-agent
+  else
+    exec /usr/bin/docker events 2>/dev/null >/dev/null
+  fi
+}
+
+if test $# -eq 0; then
+  entrypoint
+  exit $?
+fi
+
+test "x$DEBUG" = "xtrue" && set -x
+
+inquiry() {
+  for i in $(seq 1 $#); do
+    case "$1" in
+      port)
+        shift;
+        port=$1
+      ;;
+    esac
+    shift
+  done
+
+  family=${port#*/}
+  port=${port%/*}
+  test "$family" = "$port" && family="tcp"
+  port="$port/$family"
+  router_ids=$(docker ps | grep -v "^CONTAINER ID" | awk '{print $2 " " $1}' | grep "^steigr/router:" | rev | awk '{print $1}' | rev)
+  for router_id in $router_ids; do
+    exposed_port=$(docker inspect --format="{{(index (index .NetworkSettings.Ports \"$port\") 0).HostPort}}" $router_id 2>/dev/null )
+    if test -n "$exposed_port"; then
+      router_hostname=$(docker inspect --format='{{json .Config }}' $router_id | jq '.Hostname + "." + .Domainname' | xargs)
+      echo "${router_hostname}@${exposed_port}/${family}"
+    fi
+  done
+}
+
+help() {
+  echo "action unavailable: $1"
+  cat <<'EO_USAGE'
+Rancher in Docker Container
+To Start this container run:
+
+docker run --tty --interactive [--environment RANCHER_URL=$RANCHER_URL] [--environment DOCKER_DAEMON_ARGS=$DOCKER_DAEMON_ARGS] --privileged --volume {PERSISTENT_DIRECTORY}:/var/lib/docker --detach steigr/rancher-in-docker
+
+RANCHER_URL must be an URL (http(s)://.../) reachable from this container.
+DOCKER_DAEMON_ARGS prepended with "-d --icc=true --bip=NETWORK"
+NETWORK is derived from the containers default interface e.g. 172.16.1.1 will becom 10.172.16.0/24.
+
+If no rancher-url is given, the container simply starts a docker daemon inside
+
+Exposeable Service Detection:
+
+docker exec ID inquiry {PORT}
+
+EO_USAGE
+  exit 1
+}
+
+case "$1" in
+  inquiry)
+    shift; inquiry $@
+  ;;
+  *)
+    help $@
+  ;;
+esac

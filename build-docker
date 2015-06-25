@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -e
+
+DOCKER_VERSION=$(docker version | grep "Server version" | awk -F": " '{print $2}')
+tag="compute:v$DOCKER_VERSION"
+
+build_docker() {
+  cat docker/Dockerfile.template | sed -e "s:@@DOCKER_VERSION@@:$DOCKER_VERSION:g" > docker/Dockerfile
+  find docker/files -type d -name '*bin' | xargs -ID find D -type f -exec chmod +x '{}' ';'
+  docker build -t $tag docker
+  if test "$(docker images | grep -v "^REPOSITORY" | awk '{print $1 ":" $2 }' | grep "^compute:" | head -1 | awk '{print $1}')" = "$tag"; then
+    docker tag -f $tag compute:latest
+  fi
+
+}
+
+if test -z $(docker images | grep -v "^REPOSITORY" | awk '{print $1 ":" $2 }' | grep "^$tag"); then
+  build_docker
+  exit $?
+fi
+
+if test "$1" = "-f"; then
+  build_docker
+  exit $?
+fi
