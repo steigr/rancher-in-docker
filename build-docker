@@ -2,13 +2,14 @@
 
 set -e
 
+PROJECT_DIR=$(dirname $0)
 DOCKER_VERSION=$(docker version | grep "Server version" | awk -F": " '{print $2}')
 tag="compute:v$DOCKER_VERSION"
 
 build_docker() {
-  cat docker/Dockerfile.template | sed -e "s:@@DOCKER_VERSION@@:$DOCKER_VERSION:g" > docker/Dockerfile
-  find docker/files -type d -name '*bin' | xargs -ID find D -type f -exec chmod +x '{}' ';'
-  docker build -t $tag docker
+  cat $PROJECT_DIR/docker/Dockerfile.template | sed -e "s:@@DOCKER_VERSION@@:$DOCKER_VERSION:g" > $PROJECT_DIR/docker/Dockerfile
+  find $PROJECT_DIR/docker/files -type d -name '*bin' | xargs -ID find D -type f -exec chmod +x '{}' ';'
+  docker build -t $tag $PROJECT_DIR/docker
   if test "$(docker images | grep -v "^REPOSITORY" | awk '{print $1 ":" $2 }' | grep "^compute:" | head -1 | awk '{print $1}')" = "$tag"; then
     docker tag -f $tag compute:latest
   fi
