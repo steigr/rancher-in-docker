@@ -2,9 +2,10 @@
 
 entrypoint() {
   test -d /var/lib/docker || exit 1
-  export DOCKER_DAEMON_ARGS="$DOCKER_DAEMON_ARGS --icc=true --bip=10.$(ip route get 8.8.8.8 | awk '{print $7}' | awk -F. '{print $1 "." $2}').1/24"
+  export UPLINK_BIND=$(ip route get 8.8.8.8 | awk '{print $7}')
+  export DOCKER_DAEMON_ARGS="$DOCKER_DAEMON_ARGS --icc=true --host unix:///var/run/docker.sock --host tcp://$UPLINK_BIND:2375 --bip=10.$(echo $UPLINK_BIND | awk -F. '{print $1 "." $2}').1/24"
   echo "/usr/bin/docker -d $DOCKER_DAEMON_ARGS"
-  /usr/bin/wrapdocker 2>&1 > /dev/null
+  /bin/wrapdocker 2>&1 > /dev/null
 
   if test "x${RANCHER_SERVER}x${RANCER_SECRET}" != "xx"; then
     RANCHER_URL=${RANCHER_SERVER}/v1/scripts/${RANCHER_SECRET}
