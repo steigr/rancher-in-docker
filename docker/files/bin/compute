@@ -1,4 +1,11 @@
 #!/bin/bash
+cattle_agent_ip() {
+  ip -4 -o route get 8.8.8.8 | awk '{print $7}'
+}
+
+run_agent() {
+  /usr/bin/docker run --privileged -e CATTLE_AGENT_IP=$(cattle_agent_ip) -e RANCHER_URL=$1 -v /var/run/docker.sock:/var/run/docker.sock rancher/agent:v0.7.9 register
+}
 
 entrypoint() {
   test -d /var/lib/docker || exit 1
@@ -12,8 +19,7 @@ entrypoint() {
   fi
 
   if test "x${RANCHER_URL}" != "x"; then
-    CATTLE_AGENT_IP=$(ip -4 -o route get 8.8.8.8 | awk '{print $7}')
-    echo "Registering with ${RANCHER_URL} as ${CATTLE_AGENT_IP}"
+    echo "Registering with ${RANCHER_URL} as $(cattle_agent_ip)"
     if ! /usr/bin/docker inspect rancher-agent >/dev/null; then
       /usr/bin/docker rm rancher-agent-state || true
     fi
@@ -21,7 +27,7 @@ entrypoint() {
        docker -H unix:///var/run/host-docker.sock save rancher/agent | docker load
        docker -H unix:///var/run/host-docker.sock save rancher/agent-instance | docker load
     fi
-    /usr/bin/docker run --privileged -e CATTLE_AGENT_IP=$CATTLE_AGENT_IP -e RANCHER_URL=$RANCHER_URL -v /var/run/docker.sock:/var/run/docker.sock rancher/agent:v0.7.9 register
+    run_agent $RANCHER_URL
     /usr/bin/docker logs -f rancher-agent
   else
     exec /usr/bin/docker events 2>/dev/null >/dev/null
@@ -85,6 +91,9 @@ EO_USAGE
 case "$1" in
   inquiry)
     shift; inquiry $@
+  ;;
+  agent)
+    shift; run_agent $@
   ;;
   *)
     help $@
