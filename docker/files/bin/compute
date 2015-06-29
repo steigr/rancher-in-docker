@@ -39,7 +39,6 @@ entrypoint() {
     run_agent $RANCHER_URL
     /usr/bin/docker logs -f rancher-agent
   else
-    ( docker pull $(rancher_agent_image); docker pull $(rancher_agent_instance_image); ) &>/dev/null &
     exec /usr/bin/docker events 2>/dev/null >/dev/null
   fi
 }
